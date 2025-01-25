@@ -1,5 +1,6 @@
 ﻿using Dapper;
 using Microsoft.Data.SqlClient;
+using Products.Api.Database;
 using Products.Api.Dtos;
 using Products.Api.Entities;
 
@@ -9,27 +10,37 @@ public static class ProductEndpoints
 {
     public static void MapProductEndpoints(this IEndpointRouteBuilder app)
     {
-        app.MapGet("products", async (IConfiguration configuration) =>
+        app.MapGet("products", async (ProductDbContext context) =>
         {
-            const string query = "SELECT * FROM Product";
+            const string query = "SELECT Id,Name,Price,Stock FROM Product";
 
-            string connectionString = configuration.GetConnectionString("DbConnectionString");
-
-            using SqlConnection connection = new(connectionString);
+            using var connection = context.Create();
 
             var products = await connection.QueryAsync<Product>(query);
 
-            Results.Ok(products);
+            return Results.Ok(products);
         });
 
-        app.MapPost("products", async (CreateProductRequest request,IConfiguration configuration) =>
+        app.MapGet("products/{id:guid}", async (Guid id, ProductDbContext context) =>
+        {
+            const string query = "SELECT Id,Name,Price,Stock FROM Product WHERE Id=@Id";
+
+            using var connection = context.Create();
+
+            var product = await connection.QuerySingleOrDefaultAsync<Product>(
+                query,
+                new { Id = id });
+
+            return product is not null ? Results.Ok(product) : Results.NotFound();
+        })
+        .WithName("GetProductById");
+
+        app.MapPost("products", async (CreateProductRequest request, ProductDbContext context) =>
         {
             const string sql = "INSERT INTO Product(Id,Name,Price,Stock)" +
-                               " VALUES (@Id,@Name,@Price,@Stock)";
+            " VALUES(@Id,@Name,@Price,@Stock)";
 
-            string connectionString = configuration.GetConnectionString("DbConnectionString");
-
-            using SqlConnection connection = new(connectionString);
+            using var connection = context.Create();
 
             await connection.ExecuteAsync(
                 sql,
@@ -38,10 +49,41 @@ public static class ProductEndpoints
                     Id = Guid.NewGuid(),
                     Name = request.Name,
                     Price = request.Price,
-                    Stock  = request.Stock
+                    Stock = request.Stock
                 });
 
-            Results.Created();
+            return Results.Created();
+        });
+
+        app.MapPut("products/{id:guid}", async (
+            Guid id,
+            UpdateProductRequest request,
+            ProductDbContext context) =>
+        {
+            const string sql = "UPDATE Product" +
+                               " SET Name=@Name," +
+                               "     Price=@Price," +
+                               "     Stock=@Stock" +
+                               " WHERE Id=@Id";
+
+            using var connection = context.Create();
+
+            await connection.ExecuteAsync(sql, request);
+
+            return Results.NoContent();
+        });
+
+        app.MapDelete("products/{id:guid}", async (
+            Guid id,
+            ProductDbContext context) =>
+        {
+            const string sql = "DELETE Product WHERE Id=@Id";
+
+            using var connection = context.Create();
+
+            await connection.ExecuteAsync(sql, new {  Id = id});
+
+            return Results.NoContent();
         });
     }
 }
