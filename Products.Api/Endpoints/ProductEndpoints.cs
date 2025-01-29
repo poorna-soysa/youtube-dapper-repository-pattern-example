@@ -73,6 +73,7 @@ public static class ProductEndpoints
             return Results.NoContent();
         });
 
+
         app.MapDelete("products/{id:guid}", async (
             Guid id,
             ProductDbContext context) =>
